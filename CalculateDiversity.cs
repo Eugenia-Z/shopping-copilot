@@ -87,4 +87,137 @@ public class CalculateDiversity : Reducer
         outputRow["OfferCount"].Set(offerId.Count);
         yield return outputRow;
     }
+
+    public static float Unique_List(List<string> data)
+    {
+        HashSet<string> set = new HashSet<string>(data);
+        float sum = (float)set.Count;
+        int cnt = data.Count;
+        return sum / cnt;
+    }
+
+    public static float Jaccard_Title(List<List<int>> titleTokens)
+    {
+        float jaccard_sum = 0.0f;
+        int cnt = 0;
+        for (var i = 0; i < titleTokens.Count; i++)
+        {
+            for (var j = i + 1; k < titleTokens.Count; j++)
+            {
+                if (i != j)
+                {
+                    cnt += 1;
+                    jaccard_sum += 1 - JaccardBetweenTokens(titleTokens[1], titleTokens[j]);
+                }
+            }
+        }
+        return jaccard_sum / cnt;
+    }
+
+    public static float JaccardBetweenTokens(List<int> token1, List<int> token2)
+    {
+        vat intersectedList = token1.Intersect(token2).toList();
+        var unionList = token1.Union(token2).toList();
+        return (float)intersectedList.Count / (float)unionList.Count;
+    }
+
+    private List<int> TryTokenize(string text)
+    {
+        if (string.IsNullOrEmpty(test))
+        {
+            return new List<int>();
+        }
+        try
+        {
+            var tokenizationResult = fullTokenizer.Tokenize(text);
+            var tokenIdResult = fullTokenizer.ConvertTokensToIds(tokenizationResult);
+            return tokenIdResult;
+        }
+        catch (Exception)
+        {
+            return new List<int>();
+        }
+    }
+
+    public static float EditDistance(List<string> titles)
+    {
+        float editDistanceSum = 0.0f;
+        int cnt = 0;
+        for (var i = 0; i < titles.Count; i++)
+        {
+            for (var j = i + 1, j < titles.Count; j++)
+            {
+                if (i != j)
+                {
+                    cnt += 1;
+                    editDistanceSum += EditDistanceBetweenWords(titles[i], titles[j]);
+                }
+            }
+        }
+        return editDistanceSum / cnt;
+    }
+
+    public static float EditDistanceBetweenWords(string str1, string str2)
+    {
+        float distance = 0.0f;
+        int[,] Matrix;
+        int n = str1.Length;
+        int m = str2.Length;
+
+        int temp = 0;
+        char ch1;
+        char ch2;
+        int i = 0;
+        int j = 0;
+        if (n == 0)
+        {
+            return m;
+        }
+        if (m == 0)
+        {
+            return n;
+        }
+        Matrix = new int[n + 1, m + 1];
+        for (i = 0; i <= n; i++)
+        {
+            Matrix[i, 0] = i;
+        }
+        for (j = 0; j <= m; j++)
+        {
+            Matrix[0, j] = j;
+        }
+        for (i = 1; i <= n; i++)
+        {
+            ch1 = str1[i - 1];
+            for (j = 1; j <= m; j++)
+            {
+                ch2 = str2[j - 1];
+                if (ch1.Equals(ch2))
+                {
+                    temp = 0;
+                }
+                else
+                {
+                    temp = 1;
+                }
+                Matrix[i, j] = LowerOfThree(Matrix[i - 1, j] + 1, Matrix[i, j - 1] + 1, Matrix[i - 1, j - 1] + temp);
+            }
+        }
+        distance = (float)Matrix[n, m] / (float)(n > m ? n : m);
+        return distance;
+    }
+
+    public static int LowerOfThree(int first, int second, int third)
+    {
+        int min = first;
+        if (second < min)
+        {
+            min = second;
+        }
+        if (third < min)
+        {
+            min = third;
+        }
+        return min;
+    }
 }
