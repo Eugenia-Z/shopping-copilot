@@ -1,0 +1,47 @@
+REFERENCE @"Newtonsoft.Json.dll"
+
+
+// Get LLMCatId for offers
+
+// Join offer input_shop_history
+
+
+
+// ############## Calculate User Diversity ###############
+// Calculate All Item Diversity
+
+topKData = SELECT * FROM dataJoin WHERE Position <= @@topK@@;
+diversity = REDUCE topKData
+    ON UserId
+    USING CalculateDiversity(vocabPath: @@Vocab@@)
+    PRESORT Position;
+
+diversityStats = SELECT
+    "01_All User All" AS Types,
+    (float)COUNT(*) AS UserCount,
+    AVG(TitleJaccardDistance) AS Title_JaccardDistance_Mean,
+    STDEV(TitleJaccardDistance) AS Title_JaccardDistance_STD,
+    AVG(TitleEditDistance) AS Title_EditDistance_Mean,
+    STDEV(TitleEditDistance) AS Title_EditDistance_STD,
+    AVG(CategoryUniqueRatio) AS Category_UniqueRatio_Mean,
+    STDEV(CategoryUniqueRatio) AS Category_UniqueRatio_STD,
+    AVG(SellerUniqueRatio) AS Seller_UniqueRatio_Mean,
+    STDEV(SellerUniqueRatio) AS Seller_UniqueRatio_STD,
+    AVG(OfferCount) AS AVGOfferCount
+    FROM diversity;
+
+OUTPUT diversityStats TO @outputDiversityFilePath
+ORDER BY Types
+WITH STREAMEXPIRY "180"
+USING DefaultTextOutputter( outputHeader: true)
+
+#CS
+using Microsoft.SCOPE.Types;
+using System;
+
+
+
+
+
+
+#ENDCS
