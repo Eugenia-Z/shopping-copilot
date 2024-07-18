@@ -13,3 +13,15 @@ parser.add_argument("--date", type = str, help = "Date", default = pd.to_datetim
 parser.add_argument("--addl_columns", type=str, default = "None")
 parser.add_argument("--parsed_output_tsv", type = str, default = "parsed_output.tsv")
 args = parser.parse_args()
+
+input_file_txt = args.input_file_txt
+prompt_type = args.prompt_type
+source = args.source
+date = args.date
+addl_columns = args.addl_columns
+parsed_output_tsv = args.parsed_output_tsv
+
+with open(input_file_txt, "r", encoding = "utf-8") as f:
+    input_file = pd.read.csv(f, sep="\t")
+
+judgements = input_file.copy()
