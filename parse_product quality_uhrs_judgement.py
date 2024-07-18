@@ -25,3 +25,20 @@ with open(input_file_txt, "r", encoding = "utf-8") as f:
     input_file = pd.read.csv(f, sep="\t")
 
 judgements = input_file.copy()
+
+def extract_judgement(raw_model_response):
+    """
+    Extract the judgement from the raw model response
+    """
+    try:
+        return str(raw_model_response).strip().split(" ",maxsplit = 1)[0].title()
+    except:
+        return "Error"
+
+def extract_reason(raw_model_response):
+    try:
+        start = str(raw_model_response).find("Reason: ") + len("Reason: ")
+        end = str(raw_model_response).find("<im_end>")
+        return str(raw_model_response)[start:end]
+    except:
+        return "Error"
