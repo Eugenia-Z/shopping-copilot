@@ -42,3 +42,21 @@ def extract_reason(raw_model_response):
         return str(raw_model_response)[start:end]
     except:
         return "Error"
+
+judgements["Judgement"] = judgements["raw_model_reponse"].apply(extract_judgement)
+judgements["Reason"] = judgements["raw_model_reponse"].apply(extract_reason)
+judgements["Type"] = prompt_type
+judgements["Source"] = source
+judgements["Date"] = pd.to_datetime(date)
+judgements["Date"] = judgements["Date"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+if addl_columns != "None":
+    addl_columns = addl_columns.split(",")
+    judgements = judgements[judgements["Date", "Type","Source","Category","Judgement","Reason"] + addl_columns]
+else:
+    judgements = judgements[
+        ["Date", "Type", "Source", "Category", "Judgement", "Reason"]
+    ]
+
+with open(parsed_output_tsv, "w", encoding = "utf-8", newline = "") as f:
+    judgements.to_csv(f,sep="\t",index = False, quoting = csv.QUPOTE_NONE)
