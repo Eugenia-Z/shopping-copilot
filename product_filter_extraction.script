@@ -1,0 +1,190 @@
+REFERENCE @"Newtonsoft.Json.dll";
+//REFERENCE @"System.Core.dll";
+
+#DECLARE CLUSTER_DATA_PATHIN string = IF(
+    "@@CLUSTER_DATA_PATHIN_ss@@".StartsWith("@@"),
+    "/local/Retail/Catalog/Prod/VariantExtraction/SKUExtraction/SKUSynthesisData/Latest/ValidatedData/ProductSKUData.ss",
+    "@@CLUSTER_DATA_PATHIN_ss@@");
+
+#DECLARE PROD_DATA_FULL_PATHIN string = IF(
+    "@@PROD_DATA_FULL_PATHIN@@".StartsWith("@@"),
+    "/local/Retail/Catalog/Prod/ProductsConflation/ProductDataForOS/Latest/SS/ProductSynthesisData.ss",
+    "@@PROD_DATA_FULL_PATHIN@@");
+
+// Cluster Data
+// --------------------------------------------------------------------------------------------------------------------------------------
+
+cluster_data = 
+    SSTREAM @CLUSTER_DATA_PATHIN;
+
+cluster_sample =
+    SELECT *
+    FROM cluster_data SAMPLE UNIFORM(0.01);
+
+cluster_sample =
+    SELECT *
+    FROM cluster_sample
+    WHERE !string.IsNullOrEmpty(Title);
+
+cluster_sample =
+    SELECT GlobalOfferId,
+           ANY_VALUE(ProductId) AS ProductId,
+           ANY_VALUE(Title) AS Title,
+           ANY_VALUE(full_category_path) AS full_category_path,
+           ANY_VALUE(ProbableSKUs) AS ProbableSKUs
+    FROM cluster_sample
+    GROUP BY GlobalOfferId;
+
+
+cluster_sample =
+    SELECT ProductId,
+           ANY_VALUE(GlobalOfferId) AS GlobalOfferId,
+           ANY_VALUE(Title) AS Title,
+           ANY_VALUE(full_category_path) AS CategoryName,
+           ANY_VALUE(ProbableSKUs) AS ProbableSKUs
+    FROM cluster_sample
+    GROUP BY ProductId;
+
+/*cluster_sample = 
+    SELECT *,
+           SUBSTRING(CategoryName, 1, INDEXOF(CategoryName, '|') - 1) AS RootCategory
+    FROM cluster_sample;
+*/
+
+// Custom processor to extract the root category
+cluster_sample = 
+    PROCESS cluster_sample
+    USING ExtractRootCategoryProcessor;
+
+category_counts =
+    SELECT RootCategory,
+           COUNT(*) AS CategoryCount
+    FROM cluster_sample
+    GROUP BY RootCategory;
+
+// Rank categories based on their counts
+ranked_categories =
+    SELECT RootCategory,
+           CategoryCount,
+           ROW_NUMBER() OVER (ORDER BY CategoryCount DESC) AS Rank
+    FROM category_counts;
+
+// Filter top 5 categories
+top_categories =
+    SELECT RootCategory
+    FROM ranked_categories
+    WHERE Rank <= 5;
+
+// Join cluster_sample with top_categories to filter
+cluster_sample_filtered =
+    SELECT cluster_sample.*
+    FROM cluster_sample
+    JOIN top_categories
+    ON cluster_sample.RootCategory == top_categories.RootCategory;
+
+// Assign row numbers within each category
+cluster_sample_with_row_numbers =
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY RootCategory ORDER BY GlobalOfferId) AS RowNumber
+    FROM cluster_sample_filtered;
+
+// Filter top 1000 rows per category
+cluster_sample_top5 =
+    SELECT *
+    FROM cluster_sample_with_row_numbers
+    WHERE RowNumber <= 1000;
+         
+cluster_sample_top5 =
+    PROCESS cluster_sample_top5
+    USING ExtractFiltersClusterProcessor;
+
+OUTPUT cluster_sample_top5 TO "@@CLUSTER_SAMPLE_PATHOUT_tsv@@"
+                           WITH STREAMEXPIRY @"30"
+USING DefaultTextOutputter(encoding: Encoding.UTF8, outputHeader: true);
+
+// Prod Data
+// -------------------------------------------------------------------------------------------
+prod_data =
+    SSTREAM @PROD_DATA_FULL_PATHIN;
+
+prod_data =
+    SELECT *
+    FROM prod_data
+    WHERE EntityType == "Product" AND GlobalOfferIds != null AND GlobalOfferIds != "";
+
+prod_data =
+    SELECT *.Except(GlobalOfferIds, SplitGlobalOfferIdRank),
+           SplitGlobalOfferIdRank AS GlobalOfferIdRank
+    FROM prod_data
+         CROSS APPLY GlobalOfferIds.Split(',') AS SplitGlobalOfferIdRank
+    WHERE GlobalOfferIds != null AND GlobalOfferIds != "";
+
+prod_data =
+    SELECT *,
+           GlobalOfferIdRank.Split('#')[0] AS GlobalOfferId
+    FROM prod_data;
+
+prod_sample =
+    SELECT *
+    FROM prod_data SAMPLE UNIFORM (0.01);
+
+prod_sample = 
+    PROCESS prod_sample
+    USING ExtractRootCategoryProcessor;
+
+category_counts_prod =
+    SELECT RootCategory,
+           COUNT(*) AS CategoryCount
+    FROM prod_sample
+    GROUP BY RootCategory;
+
+ranked_categories_prod =
+    SELECT RootCategory,
+           CategoryCount,
+           ROW_NUMBER() OVER (ORDER BY CategoryCount DESC) AS Rank
+    FROM category_counts_prod;
+
+top_categories_prod =
+    SELECT RootCategory
+    FROM ranked_categories_prod
+    WHERE Rank <= 5;
+
+// Join prod_sample with top_categories_prod to filter
+prod_sample_filtered =
+    SELECT prod_sample.*
+    FROM prod_sample
+    JOIN top_categories_prod
+    ON prod_sample.RootCategory == top_categories_prod.RootCategory;
+
+// Assign row numbers within each category
+prod_sample_with_row_numbers =
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY RootCategory ORDER BY GlobalOfferId) AS RowNumber
+    FROM prod_sample_filtered;
+
+// Filter top 1000 rows per category
+prod_sample_top5 =
+    SELECT *
+    FROM prod_sample_with_row_numbers
+    WHERE RowNumber <= 1000;
+
+prod_sample_top5 =
+    PROCESS prod_sample_top5
+    USING ExtractSpecsProdProcessor;
+
+prod_sample_top5 =
+    SELECT ProductId,
+           ANY_VALUE(GlobalOfferId) AS GlobalOfferId,
+           ANY_VALUE(Title) AS Title,
+           ANY_VALUE(CategoryName) AS CategoryName,
+           ANY_VALUE(ProbableSKUs) AS ProbableSKUs,
+           ANY_VALUE(Filters) AS Filters
+    FROM prod_sample_top5
+    GROUP BY ProductId;
+
+
+OUTPUT prod_sample_top5 TO "@@PROD_SAMPLE_PATHOUT_tsv@@"
+                         WITH STREAMEXPIRY @"30"
+USING DefaultTextOutputter(encoding: Encoding.UTF8, outputHeader: true);
+// --------------------------------------------------------------------------------------------------------------------------------------
+
